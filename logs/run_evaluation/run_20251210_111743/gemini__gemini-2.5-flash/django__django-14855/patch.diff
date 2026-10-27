@@ -1,0 +1,84 @@
+diff --git a/django/contrib/admin/helpers.py b/django/contrib/admin/helpers.py
+index dd154f72ee..35108cc359 100644
+--- a/django/contrib/admin/helpers.py
++++ b/django/contrib/admin/helpers.py
+@@ -209,7 +209,7 @@ class AdminReadonlyField:
+             remote_field.model._meta.model_name,
+         )
+         try:
+-            url = reverse(url_name, args=[quote(remote_obj.pk)])
++            url = reverse(url_name, args=[quote(remote_obj.pk)], current_app=self.model_admin.admin_site.name)
+             return format_html('<a href="{}">{}</a>', url, remote_obj)
+         except NoReverseMatch:
+             return str(remote_obj)
+diff --git a/tests/admin_views/test_custom_admin_url.py b/tests/admin_views/test_custom_admin_url.py
+new file mode 100644
+index 0000000000..5812e75aae
+--- /dev/null
++++ b/tests/admin_views/test_custom_admin_url.py
+@@ -0,0 +1,65 @@
++from django.contrib import admin
++from django.contrib.auth.models import User
++from django.test import TestCase, override_settings
++import datetime
++from django.urls import path, reverse
++
++from .models import Article, Section
++
++# Custom AdminSite
++class CustomAdminSite(admin.AdminSite):
++    site_header = "Custom Admin"
++    site_title = "Custom Admin Portal"
++    index_title = "Welcome to Custom Admin"
++
++custom_admin_site = CustomAdminSite(name='custom_admin')
++
++# ModelAdmins for the custom site
++class SectionAdmin(admin.ModelAdmin):
++    pass
++
++class ArticleAdmin(admin.ModelAdmin):
++    readonly_fields = ('section',)
++
++custom_admin_site.register(Section, SectionAdmin)
++custom_admin_site.register(Article, ArticleAdmin)
++
++urlpatterns = [
++    path('custom-admin/', custom_admin_site.urls),
++]
++
++@override_settings(ROOT_URLCONF='admin_views.test_custom_admin_url')
++class CustomAdminURLTests(TestCase):
++    @classmethod
++    def setUpTestData(cls):
++        cls.superuser = User.objects.create_superuser(
++            username='admin',
++            email='admin@example.com',
++            password='password'
++        )
++        cls.section = Section.objects.create(name='Test Section')
++        cls.article = Article.objects.create(
++            title='Test Article',
++            content='Some content',
++            date=datetime.datetime(2023, 1, 1, 10, 0, 0),
++            section=cls.section
++        )
++
++    def setUp(self):
++        self.client.login(username='admin', password='password')
++
++    def test_readonly_foreignkey_url_in_custom_admin(self):
++        change_url = reverse('custom_admin:admin_views_article_change', args=[self.article.pk])
++        response = self.client.get(change_url)
++        self.assertEqual(response.status_code, 200)
++
++        # The expected URL for the readonly ForeignKey should use the custom admin namespace
++        expected_section_url = reverse('custom_admin:admin_views_section_change', args=[self.section.pk])
++        
++        # Check if the response contains a link to the section using the custom admin URL
++        self.assertContains(
++            response,
++            f'<a href="{expected_section_url}">{self.section}</a>',
++            html=True,
++        )
++

@@ -1,0 +1,101 @@
+diff --git a/django/db/models/aggregates.py b/django/db/models/aggregates.py
+index ac0b62d0bf..f746654ace 100644
+--- a/django/db/models/aggregates.py
++++ b/django/db/models/aggregates.py
+@@ -14,7 +14,7 @@ __all__ = [
+ 
+ 
+ class Aggregate(Func):
+-    template = '%(function)s(%(distinct)s%(expressions)s)'
++    template = '%(function)s(%(distinct)s %(expressions)s)'
+     contains_aggregate = True
+     name = None
+     filter_template = '%s FILTER (WHERE %%(filter)s)'
+diff --git a/myapp/models.py b/myapp/models.py
+new file mode 100644
+index 0000000000..c1d4ef8f63
+--- /dev/null
++++ b/myapp/models.py
+@@ -0,0 +1,5 @@
++from django.db import models
++
++class MyModel(models.Model):
++    value = models.IntegerField()
++    category = models.CharField(max_length=100)
+diff --git a/settings.py b/settings.py
+new file mode 100644
+index 0000000000..cf74b14c4a
+--- /dev/null
++++ b/settings.py
+@@ -0,0 +1,3 @@
++SECRET_KEY = 'a-very-secret-key'
++INSTALLED_APPS = ['myapp']
++DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}}
+diff --git a/test_issue.py b/test_issue.py
+new file mode 100644
+index 0000000000..fa6b23aaf3
+--- /dev/null
++++ b/test_issue.py
+@@ -0,0 +1,50 @@
++import os
++import django
++from django.conf import settings
++
++os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
++settings.configure(
++    INSTALLED_APPS=['myapp'],
++    DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}},
++)
++django.setup() # This populates apps and sets up other Django internals
++
++from django.db import connection
++from django.db.models import Case, Count, When, IntegerField
++from myapp.models import MyModel
++
++def setup_database():
++    with connection.schema_editor() as schema_editor:
++        schema_editor.create_model(MyModel)
++
++def teardown_database():
++    with connection.schema_editor() as schema_editor:
++        schema_editor.delete_model(MyModel)
++
++def run_test():
++    setup_database()
++    try:
++        MyModel.objects.create(value=1, category='A')
++        MyModel.objects.create(value=2, category='A')
++        MyModel.objects.create(value=3, category='B')
++        MyModel.objects.create(value=1, category='A') # Duplicate to test distinct
++
++        # The problematic query
++        result = MyModel.objects.aggregate(
++            distinct_case_count=Count(
++                Case(
++                    When(category='A', then='value'),
++                    output_field=IntegerField()
++                ),
++                distinct=True
++            )
++        )
++        print(result)
++        print("Test passed: Query executed successfully.")
++    except Exception as e:
++        print(f"Test failed: {e}")
++    finally:
++        teardown_database()
++
++if __name__ == '__main__':
++    run_test()
+diff --git a/urls.py b/urls.py
+new file mode 100644
+index 0000000000..dfc73621fa
+--- /dev/null
++++ b/urls.py
+@@ -0,0 +1,6 @@
++from django.contrib import admin
++from django.urls import path
++
++urlpatterns = [
++    path('admin/', admin.site.urls),
++]

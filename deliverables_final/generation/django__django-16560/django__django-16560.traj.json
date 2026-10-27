@@ -1,0 +1,1004 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/django/db/models/constraints.py b/django/db/models/constraints.py\nindex 075ecee1be..afc99342a1 100644\n--- a/django/db/models/constraints.py\n+++ b/django/db/models/constraints.py\n@@ -18,11 +18,12 @@ __all__ = [\"BaseConstraint\", \"CheckConstraint\", \"Deferrable\", \"UniqueConstraint\"\n \n class BaseConstraint:\n     default_violation_error_message = _(\"Constraint \u201c%(name)s\u201d is violated.\")\n+    default_violation_error_code = \"constraint\"\n     violation_error_message = None\n \n     # RemovedInDjango60Warning: When the deprecation ends, replace with:\n     # def __init__(self, *, name, violation_error_message=None):\n-    def __init__(self, *args, name=None, violation_error_message=None):\n+    def __init__(self, *args, name=None, violation_error_message=None, violation_error_code=None):\n         # RemovedInDjango60Warning.\n         if name is None and not args:\n             raise TypeError(\n@@ -34,6 +35,10 @@ class BaseConstraint:\n             self.violation_error_message = violation_error_message\n         else:\n             self.violation_error_message = self.default_violation_error_message\n+        if violation_error_code is not None:\n+            self.violation_error_code = violation_error_code\n+        else:\n+            self.violation_error_code = \"constraint\"\n         # RemovedInDjango60Warning.\n         if args:\n             warnings.warn(\n@@ -74,6 +79,8 @@ class BaseConstraint:\n             and self.violation_error_message != self.default_violation_error_message\n         ):\n             kwargs[\"violation_error_message\"] = self.violation_error_message\n+        if self.violation_error_code is not None and self.violation_error_code != self.default_violation_error_code:\n+            kwargs[\"violation_error_code\"] = self.violation_error_code\n         return (path, (), kwargs)\n \n     def clone(self):\n@@ -82,13 +89,13 @@ class BaseConstraint:\n \n \n class CheckConstraint(BaseConstraint):\n-    def __init__(self, *, check, name, violation_error_message=None):\n+    def __init__(self, *, check, name, violation_error_message=None, violation_error_code=None):\n         self.check = check\n         if not getattr(check, \"conditional\", False):\n             raise TypeError(\n                 \"CheckConstraint.check must be a Q instance or boolean expression.\"\n             )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     def _get_check_sql(self, model, schema_editor):\n         query = Query(model=model, alias_cols=False)\n@@ -112,7 +119,7 @@ class CheckConstraint(BaseConstraint):\n         against = instance._get_field_value_map(meta=model._meta, exclude=exclude)\n         try:\n             if not Q(self.check).check(against, using=using):\n-                raise ValidationError(self.get_violation_error_message())\n+                raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n         except FieldError:\n             pass\n \n@@ -163,7 +170,7 @@ class UniqueConstraint(BaseConstraint):\n         deferrable=None,\n         include=None,\n         opclasses=(),\n-        violation_error_message=None,\n+        violation_error_message=None, violation_error_code=None,\n     ):\n         if not name:\n             raise ValueError(\"A unique constraint must be named.\")\n@@ -213,7 +220,7 @@ class UniqueConstraint(BaseConstraint):\n             F(expression) if isinstance(expression, str) else expression\n             for expression in expressions\n         )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     @property\n     def contains_expressions(self):\n@@ -385,7 +392,7 @@ class UniqueConstraint(BaseConstraint):\n         if not self.condition:\n             if queryset.exists():\n                 if self.expressions:\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n                 # When fields are defined, use the unique_error_message() for\n                 # backward compatibility.\n                 for model, constraints in instance.get_constraints():\n@@ -400,6 +407,6 @@ class UniqueConstraint(BaseConstraint):\n                 if (self.condition & Exists(queryset.filter(self.condition))).check(\n                     against, using=using\n                 ):\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n             except FieldError:\n                 pass\n",
+    "model_stats": {
+      "instance_cost": 0.022266309999999997,
+      "api_calls": 17
+    },
+    "mini_version": "1.11.1",
+    "config": {
+      "agent": {
+        "system_template": "You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.\nYour response must contain exactly ONE action block per step. You can choose one of:\n- A bash code block with ONE command (or commands connected with && or ||)\n- A tool block to call an available tool\n\nInclude a THOUGHT section before your action where you explain your reasoning process.\nFormat your response as shown in <format_example>.\n\n{% if tool_specs %}\nAvailable tools (name, description, parameters):\n{% for t in tool_specs %}- {{t.name}}: {{t.description}} ({{t.parameters}})\n{% endfor %}\n{% endif %}\n\n<format_example>\nTHOUGHT: Your reasoning and analysis here\n\n```bash\nyour_command_here\n```\n\nor\n\n```tool\n{\"name\": \"tool_name\", \"args\": {\"k\": \"v\"}}\n```\n</format_example>\n\nFailure to follow these rules will cause your response to be rejected.\n",
+        "instance_template": "<pr_description>\nConsider the following PR description:\n{{task}}\n</pr_description>\n\n<instructions>\n# Task Instructions\n\n## Overview\nYou're a software engineer interacting continuously with a computer by submitting commands.\nYou'll be helping implement necessary changes to meet requirements in the PR description.\nYour task is specifically to make changes to non-test files in the current directory in order to fix the issue described in the PR description in a way that is general and consistent with the codebase.\n\nIMPORTANT: This is an interactive process where you will think and issue ONE command, see its result, then think and issue your next command.\n\nFor each response:\n1. Include a THOUGHT section explaining your reasoning and what you're trying to accomplish\n2. Provide exactly ONE action to execute (bash block or tool block)\n\n## Important Boundaries\n- MODIFY: Regular source code files in /testbed (this is the working directory for all your subsequent commands)\n- DO NOT MODIFY: Tests, configuration files (pyproject.toml, setup.cfg, etc.)\n\n## Recommended Workflow\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n\n## Command Execution Rules\nYou are operating in an environment where\n1. You write a single command\n2. The system executes that command in a subshell\n3. You see the result\n4. You write your next command\n\nEach response should include:\n1. A **THOUGHT** section where you explain your reasoning and plan\n2. Exactly one action: either a bash code block with your command, or a tool block\n\nFormat your responses like this:\n\n<format_example>\nTHOUGHT: Here I explain my reasoning process, analysis of the current situation,\nand what I'm trying to accomplish with the command below.\n\n```bash\nyour_command_here\n```\n\nor\n\n```tool\n{\"name\": \"tool_name\", \"args\": {\"k\": \"v\"}}\n```\n</format_example>\n\nCommands must be specified in a single bash code block:\n\n```bash\nyour_command_here\n```\n\n**CRITICAL REQUIREMENTS:**\n- Your response SHOULD include a THOUGHT section explaining your reasoning\n- Your response MUST include EXACTLY ONE action (either a bash block or a tool block)\n- A bash action MUST contain EXACTLY ONE command (or a set of commands connected with && or ||)\n- If you include zero or multiple action blocks, YOUR RESPONSE WILL FAIL\n- Do NOT try to run multiple independent commands in separate blocks in one response\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n\nExample of a CORRECT response:\n<example_response>\nTHOUGHT: I need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n```bash\nls -la\n```\n</example_response>\n\nExample of an INCORRECT response:\n<example_response>\nTHOUGHT: I need to examine the codebase and then look at a specific file. I'll run multiple commands to do this.\n\n```bash\nls -la\n```\n\nNow I'll read the file:\n\n```bash\ncat file.txt\n```\n</example_response>\n\nIf you need to run multiple commands, either:\n1. Combine them in one block using && or ||\n```bash\ncommand1 && command2 || echo \"Error occurred\"\n```\n\n2. Wait for the first command to complete, see its output, then issue the next command in your following response.\n\n## Environment Details\n- You have a full Linux shell environment\n- Always use non-interactive flags (-y, -f) for commands\n- Avoid interactive tools like vi, nano, or any that require user input\n- If a command isn't available, you can install it\n\n## Useful Command Examples\n\n### Create a new file:\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:\n```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n```bash\nanything\n```\n\n## Submission\nWhen you've completed your work (reading, editing, testing), and cannot make further progress\nissue exactly the following command:\n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached\n```\n\nThis command will submit your work.\nYou cannot continue working (reading, editing, testing) in any way on this task after submitting.\n</instructions>\n",
+        "timeout_template": "The last command <command>{{action['action']}}</command> timed out and has been killed.\nThe output of the command was:\n <output>\n{{output}}\n</output>\nPlease try another command and make sure to avoid those requiring interactive input.",
+        "format_error_template": "Please always provide EXACTLY ONE action in triple backticks, found {{actions|length}} actions.\n\nPlease format your action in triple backticks as shown in <response_examples>.\n\n<response_examples>\nHere are some thoughts about why you want to perform the action.\n\n```bash\n<bash_action>\n```\n\nor\n\n```tool\n{\"name\": \"<tool_name>\", \"args\": { ... }}\n```\n</response_examples>\n\nIf you have completed your assignment, please consult the first message about how to\nsubmit your solution (you will not be able to continue working on this task after that).\n",
+        "action_observation_template": "<returncode>{{output.returncode}}</returncode>\n{% if output.output | length < 10000 -%}\n<output>\n{{ output.output -}}\n</output>\n{%- else -%}\n<warning>\nThe output of your last command was too long.\nPlease try a different command that produces less output.\nIf you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.\nIf you're using grep or find and it produced too much output, you can use a more selective search pattern.\nIf you really need to see something from the full command's output, you can redirect output to a file and then search in that file.\n</warning>\n{%- set elided_chars = output.output | length - 10000 -%}\n<output_head>\n{{ output.output[:5000] }}\n</output_head>\n<elided_chars>\n{{ elided_chars }} characters elided\n</elided_chars>\n<output_tail>\n{{ output.output[-5000:] }}\n</output_tail>\n{%- endif -%}\n",
+        "step_limit": 60,
+        "cost_limit": 3.0,
+        "enable_memory": false,
+        "memory_max_messages": 50,
+        "memory_dir": "",
+        "memory_session_id": "",
+        "memory_load_session": false
+      },
+      "model": {
+        "model_name": "vertex_ai/gemini-2.5-flash",
+        "model_kwargs": {
+          "drop_params": true,
+          "temperature": 0.0
+        },
+        "litellm_model_registry": null
+      },
+      "environment": {
+        "image": "docker.io/swebench/sweb.eval.x86_64.django_1776_django-16560:latest",
+        "cwd": "/testbed",
+        "env": {
+          "PAGER": "cat",
+          "MANPAGER": "cat",
+          "LESS": "-R",
+          "PIP_PROGRESS_BAR": "off",
+          "TQDM_DISABLE": "1"
+        },
+        "forward_env": [],
+        "timeout": 600,
+        "executable": "docker",
+        "run_args": [
+          "--rm"
+        ],
+        "container_timeout": "2h",
+        "pull_timeout": 800
+      },
+      "agent_type": "minisweagent.run.extra.swebench.ProgressTrackingAgent",
+      "model_type": "minisweagent.models.litellm_model.LitellmModel",
+      "environment_type": "minisweagent.environments.docker.DockerEnvironment"
+    }
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.\nYour response must contain exactly ONE action block per step. You can choose one of:\n- A bash code block with ONE command (or commands connected with && or ||)\n- A tool block to call an available tool\n\nInclude a THOUGHT section before your action where you explain your reasoning process.\nFormat your response as shown in <format_example>.\n\n\nAvailable tools (name, description, parameters):\n- search_files: Recursively search files for a text pattern and show matching lines with numbers. Use this to locate code before editing; pair with read_file for context checks and with replace or apply_diff when preparing targeted fixes. ({'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'The text string to search for'}, 'path': {'type': 'string', 'description': 'Directory to search in (defaults to current directory .)', 'default': '.'}}, 'required': ['query'], 'additionalProperties': False})\n- read_file: Read a UTF-8 text file, optionally by line range. Use this to inspect code before applying edits; pair with search, summarize_file, or replace/apply_diff when you need context-aware modifications. ({'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to the file to read'}, 'start_line': {'type': 'integer', 'description': 'Line number to start reading (1-indexed)'}, 'end_line': {'type': 'integer', 'description': 'Line number to stop reading (inclusive)'}}, 'required': ['path'], 'additionalProperties': False})\n- write_file: Write UTF-8 text to a file, overwriting its contents. Use this for direct rewrites or for creating helper files (like temporary patches) before calling apply_diff; pair with read_file when validating changes. ({'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to the file to write'}, 'content': {'type': 'string', 'description': 'Content to write to the file'}}, 'required': ['path', 'content'], 'additionalProperties': False})\n- apply_diff: Apply a unified diff to modify files in /testbed. Use this for structured, multi-file edits after inspecting code with search_files or read_file; ideal when producing precise patches instead of rewriting entire files. ({'type': 'object', 'properties': {'patch': {'type': 'string', 'description': 'Patch to apply in unified diff format.'}, 'strip': {'type': 'integer', 'description': 'Number of leading components to strip from file paths in the patch.', 'default': 1}}, 'required': ['patch'], 'additionalProperties': False})\n- summarize_file: Generate a concise summary of a file\u2019s contents. Use this to quickly understand large files before deciding where to inspect further; pair with search_files or read_file when narrowing down what needs to be fixed. ({'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to the text file to summarize.'}, 'max_length': {'type': 'integer', 'description': 'Maximum length of the summary.', 'default': 100}}, 'required': ['path'], 'additionalProperties': False})\n- todo_list: Maintain a simple to-do list inside the sandbox. Use this to track multi-step fixes or follow-up tasks across tool calls; pair with search_files, read_file, and apply_diff to keep a running plan while modifying the codebase. ({'type': 'object', 'properties': {'action': {'type': 'string', 'description': 'Action to perform: add, remove, list, clear', 'enum': ['add', 'remove', 'list', 'clear']}, 'item': {'type': 'string', 'description': 'Item to add to the to-do list'}, 'index': {'type': 'integer', 'description': '1-based index of the item to remove from the to-do list'}}, 'required': ['action'], 'additionalProperties': False})\n- replace: Search and replace text in a file. Use this for small, direct edits without generating a full diff. ({'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to the file'}, 'original': {'type': 'string', 'description': 'String value to search for and replace'}, 'replacement': {'type': 'string', 'description': 'String value to replace the original string with'}}, 'required': ['path', 'original', 'replacement'], 'additionalProperties': False})\n- run_test: Run tests inside /testbed to confirm whether a fix works. Use this after applying patches or rewriting files to validate behavior; pair with apply_diff or write_file as part of an edit\u2013test cycle. ({'type': 'object', 'properties': {'command': {'type': 'string', 'description': \"The command to run the test (e.g., 'pytest tests/test_models.py' or 'python manage.py test apps.core').\"}}, 'required': ['command'], 'additionalProperties': False})\n- lint_file: Check a Python file for syntax errors. Use this to validate code before applying patches or running tests; pairs well with apply_diff and run_test to catch issues early in the fix cycle. ({'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to the python file to lint.'}}, 'required': ['path'], 'additionalProperties': False})\n- list_directory: List files in a directory up to a chosen depth. Use this to understand project layout before searching or editing code; pairs well with search_files and read_file when locating where a fix should occur. ({'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'The directory to list (default: .)', 'default': '.'}, 'depth': {'type': 'integer', 'description': 'How many levels deep to list (default: 2)', 'default': 2}}, 'required': [], 'additionalProperties': False})\n- git_diff: Show the current uncommitted changes in /testbed using git diff. Use this to inspect what has been modified before generating or applying patches. ({'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False})\n\n\n\n<format_example>\nTHOUGHT: Your reasoning and analysis here\n\n```bash\nyour_command_here\n```\n\nor\n\n```tool\n{\"name\": \"tool_name\", \"args\": {\"k\": \"v\"}}\n```\n</format_example>\n\nFailure to follow these rules will cause your response to be rejected."
+    },
+    {
+      "role": "user",
+      "content": "<pr_description>\nConsider the following PR description:\nAllow to customize the code attribute of ValidationError raised by BaseConstraint.validate\nDescription\n\t\nIt is currently possible to customize the violation_error_message of a ValidationError raised by a constraint but not the code.\nI'd like to add a new violation_error_message parameter to BaseConstraint to allow to easily add one.\nCurrently, to achieve the same result, you have to subclass the constraint to tweak validate to catch and reraise the ValidationError.\nSince the documentation recommends to Provide a descriptive error code to the constructor: when raising a ValidationError in \u200bhttps://docs.djangoproject.com/en/4.1/ref/forms/validation/#raising-validationerror , I think it would make sense to provide this possibility for errors raised by constraints.\nIf you think it would be a good idea, I'd be happy to work on a PR.\n\n</pr_description>\n\n<instructions>\n# Task Instructions\n\n## Overview\nYou're a software engineer interacting continuously with a computer by submitting commands.\nYou'll be helping implement necessary changes to meet requirements in the PR description.\nYour task is specifically to make changes to non-test files in the current directory in order to fix the issue described in the PR description in a way that is general and consistent with the codebase.\n\nIMPORTANT: This is an interactive process where you will think and issue ONE command, see its result, then think and issue your next command.\n\nFor each response:\n1. Include a THOUGHT section explaining your reasoning and what you're trying to accomplish\n2. Provide exactly ONE action to execute (bash block or tool block)\n\n## Important Boundaries\n- MODIFY: Regular source code files in /testbed (this is the working directory for all your subsequent commands)\n- DO NOT MODIFY: Tests, configuration files (pyproject.toml, setup.cfg, etc.)\n\n## Recommended Workflow\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n\n## Command Execution Rules\nYou are operating in an environment where\n1. You write a single command\n2. The system executes that command in a subshell\n3. You see the result\n4. You write your next command\n\nEach response should include:\n1. A **THOUGHT** section where you explain your reasoning and plan\n2. Exactly one action: either a bash code block with your command, or a tool block\n\nFormat your responses like this:\n\n<format_example>\nTHOUGHT: Here I explain my reasoning process, analysis of the current situation,\nand what I'm trying to accomplish with the command below.\n\n```bash\nyour_command_here\n```\n\nor\n\n```tool\n{\"name\": \"tool_name\", \"args\": {\"k\": \"v\"}}\n```\n</format_example>\n\nCommands must be specified in a single bash code block:\n\n```bash\nyour_command_here\n```\n\n**CRITICAL REQUIREMENTS:**\n- Your response SHOULD include a THOUGHT section explaining your reasoning\n- Your response MUST include EXACTLY ONE action (either a bash block or a tool block)\n- A bash action MUST contain EXACTLY ONE command (or a set of commands connected with && or ||)\n- If you include zero or multiple action blocks, YOUR RESPONSE WILL FAIL\n- Do NOT try to run multiple independent commands in separate blocks in one response\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n\nExample of a CORRECT response:\n<example_response>\nTHOUGHT: I need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n```bash\nls -la\n```\n</example_response>\n\nExample of an INCORRECT response:\n<example_response>\nTHOUGHT: I need to examine the codebase and then look at a specific file. I'll run multiple commands to do this.\n\n```bash\nls -la\n```\n\nNow I'll read the file:\n\n```bash\ncat file.txt\n```\n</example_response>\n\nIf you need to run multiple commands, either:\n1. Combine them in one block using && or ||\n```bash\ncommand1 && command2 || echo \"Error occurred\"\n```\n\n2. Wait for the first command to complete, see its output, then issue the next command in your following response.\n\n## Environment Details\n- You have a full Linux shell environment\n- Always use non-interactive flags (-y, -f) for commands\n- Avoid interactive tools like vi, nano, or any that require user input\n- If a command isn't available, you can install it\n\n## Useful Command Examples\n\n### Create a new file:\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:\n```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n```bash\nanything\n```\n\n## Submission\nWhen you've completed your work (reading, editing, testing), and cannot make further progress\nissue exactly the following command:\n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached\n```\n\nThis command will submit your work.\nYou cannot continue working (reading, editing, testing) in any way on this task after submitting.\n</instructions>"
+    },
+    {
+      "role": "assistant",
+      "content": "```tool\n{\"name\": \"list_directory\", \"args\": {}}\n```",
+      "extra": {
+        "response": {
+          "id": "uSU6aYnBLb2Gi-8PrL2toAo",
+          "created": 1765418426,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "```tool\n{\"name\": \"list_directory\", \"args\": {}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 141,
+            "prompt_tokens": 2870,
+            "total_tokens": 3011,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": 123,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 18,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": null,
+              "text_tokens": 2870,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n.\n./setup.py\n./Django.egg-info\n./Django.egg-info/PKG-INFO\n./Django.egg-info/not-zip-safe\n./Django.egg-info/SOURCES.txt\n./Django.egg-info/top_level.txt\n./Django.egg-info/requires.txt\n./Django.egg-info/entry_points.txt\n./Django.egg-info/dependency_links.txt\n./AUTHORS\n./tests\n./tests/deprecation\n./tests/fixtures_regress\n./tests/reverse_lookup\n./tests/transactions\n./tests/one_to_one\n./tests/admin_docs\n./tests/shortcuts\n./tests/delete\n./tests/syndication_tests\n./tests/nested_foreign_keys\n./tests/properties\n./tests/schema\n./tests/inline_formsets\n./tests/resolve_url\n./tests/sitemaps_tests\n./tests/m2m_regress\n./tests/model_inheritance\n./tests/test_utils\n./tests/builtin_server\n./tests/files\n./tests/templates\n./tests/test_runner_apps\n./tests/aggregation\n./tests/shell\n./tests/db_utils\n./tests/m2o_recursive\n./tests/csrf_tests\n./tests/template_backends\n./tests/null_fk_ordering\n./tests/requests_tests\n./tests/prefetch_related\n./tests/str\n./tests/migrations2\n./tests/dbshell\n./tests/db_functions\n./tests/queries\n./tests/or_lookups\n./tests/m2m_through\n./tests/contenttypes_tests\n./tests/decorators\n./tests/extra_regress\n./tests/dates\n./tests/m2m_intermediary\n./tests/ordering\n./tests/filtered_relation\n./tests/apps\n./tests/datetimes\n./tests/get_earliest_or_latest\n./tests/get_object_or_404\n./tests/modeladmin\n./tests/model_indexes\n./tests/template_loader\n./tests/generic_relations\n./tests/sites_framework\n./tests/delete_regress\n./tests/defer\n./tests/custom_methods\n./tests/middleware_exceptions\n./tests/model_inheritance_regress\n./tests/test_client_regress\n./tests/serializers\n./tests/indexes\n./tests/handlers\n./tests/i18n\n./tests/field_deconstruction\n./tests/model_forms\n./tests/max_lengths\n./tests/m2m_signals\n./tests/order_with_respect_to\n./tests/update\n./tests/get_or_create\n./tests/expressions_case\n./tests/messages_tests\n./tests/pagination\n./tests/check_framework\n./tests/proxy_model_inheritance\n./tests/admin_checks\n./tests/urlpatterns_reverse\n./tests/many_to_one\n./tests/middleware\n./tests/context_processors\n./tests/constraints\n./tests/servers\n./tests/from_db_value\n./tests/admin_inlines\n./tests/wsgi\n./tests/m2m_multiple\n./tests/urls.py\n./tests/admin_scripts\n./tests/project_template\n./tests/transaction_hooks\n./tests/inspectdb\n./tests/custom_pk\n./tests/m2m_and_m2o\n./tests/dispatch\n./tests/generic_relations_regress\n./tests/multiple_database\n./tests/fixtures_model_package\n./tests/xor_lookups\n./tests/model_utils\n./tests/proxy_models\n./tests/test_client\n./tests/model_package\n./tests/expressions_window\n./tests/empty\n./tests/string_lookup\n./tests/field_subclassing\n./tests/view_tests\n./tests/fixtures\n./tests/signals\n./tests/model_meta\n./tests/mail\n./tests/reserved_names\n./tests/foreign_object\n./tests/introspection\n./tests/admin_custom_urls\n./tests/file_storage\n./tests/humanize_tests\n./tests/force_insert_update\n./tests/admin_utils\n./tests/base\n./tests/requirements\n./tests/version\n./tests/runtests.py\n./tests/custom_managers\n./tests/flatpages_tests\n./tests/test_exceptions\n./tests/staticfiles_tests\n./tests/bash_completion\n./tests/file_uploads\n./tests/responses\n./tests/sessions_tests\n./tests/distinct_on_fields\n./tests/model_enums\n./tests/update_only_fields\n./tests/m2m_through_regress\n./tests/select_related\n./tests/defer_regress\n./tests/unmanaged_models\n./tests/user_commands\n./tests/admin_widgets\n./tests/sites_tests\n./tests/basic\n./tests/test_sqlite.py\n./tests/auth_tests\n./tests/forms_tests\n./tests/backends\n./tests/select_related_onetoone\n./tests/null_fk\n./tests/test_runner\n./tests/field_defaults\n./tests/generic_views\n./tests/expressions\n./tests/admin_autodiscover\n./tests/model_fields\n./tests/redirects_tests\n./tests/signing\n./tests/migrations\n./tests/bulk_create\n./tests/README.rst\n./tests/raw_query\n./tests/cache\n./tests/swappable_models\n./tests/import_error_package\n./tests/validation\n./tests/model_formsets\n./tests/model_options\n./tests/urlpatterns\n./tests/custom_migration_operations\n./tests/signed_cookies_tests\n./tests/m2m_recursive\n./tests/select_for_update\n./tests/lookup\n./tests/admin_filters\n./tests/timezones\n./tests/many_to_many\n./tests/custom_lookups\n./tests/null_queries\n./tests/annotations\n./tests/settings_tests\n./tests/async\n./tests/aggregation_regress\n./tests/conditional_processing\n./tests/migration_test_data_persistence\n./tests/validators\n./tests/datatypes\n./tests/postgres_tests\n./tests/template_tests\n./tests/invalid_models_tests\n./tests/db_typecasts\n./tests/admin_changelist\n./tests/admin_views\n./tests/empty_models\n./tests/mutually_referential\n./tests/model_regress\n./tests/admin_default_site\n./tests/model_formsets_regress\n./tests/no_models\n./tests/gis_tests\n./tests/save_delete_hooks\n./tests/many_to_one_null\n./tests/known_related_objects\n./tests/custom_columns\n./tests/migrate_signals\n./tests/admin_ordering\n./tests/logging_tests\n./tests/select_related_regress\n./tests/httpwrappers\n./tests/asgi\n./tests/absolute_url_overrides\n./tests/admin_registration\n./tests/managers_regress\n./tests/app_loading\n./tests/utils_tests\n./tests/queryset_pickle\n./tests/generic_inline_admin\n./scripts\n./scripts/rpm-install.sh\n./scripts/manage_translations.py\n./extras\n./extras/README.TXT\n./extras/django_bash_completion\n./extras/Makefile\n./js_tests\n./js_tests/admin\n./js_tests/gis\n./js_tests/tests.html\n./package.json\n./docs\n./docs/make.bat\n./docs/ref\n./docs/contents.txt\n./docs/conf.py\n./docs/releases\n./docs/_theme\n./docs/misc\n./docs/Makefile\n./docs/faq\n./docs/requirements.txt\n./docs/topics\n./docs/man\n./docs/internals\n./docs/glossary.txt\n./docs/README.rst\n./docs/index.txt\n./docs/intro\n./docs/_ext\n./docs/howto\n./docs/spelling_wordlist\n./INSTALL\n./LICENSE\n./MANIFEST.in\n./Gruntfile.js\n./LICENSE.python\n./tox.ini\n./README.rst\n./CONTRIBUTING.rst\n./setup.cfg\n./pyproject.toml\n./django\n./django/__main__.py\n./django/conf\n./django/templatetags\n./django/core\n./django/apps\n./django/middleware\n./django/dispatch\n./django/shortcuts.py\n./django/http\n./django/views\n./django/contrib\n./django/utils\n./django/template\n./django/urls\n./django/db\n./django/forms\n./django/__init__.py\n./django/__pycache__\n./django/test\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: The PR description mentions `BaseConstraint.validate` and `ValidationError`. I need to find the `BaseConstraint` class to understand how to modify it. I'll start by searching for `BaseConstraint` in the `django` directory.\n\n```tool\n{\"name\": \"search_files\", \"args\": {\"query\": \"class BaseConstraint\", \"path\": \"django\"}}\n```",
+      "extra": {
+        "response": {
+          "id": "uiU6aaiVOZani-8Pqfq_6A8",
+          "created": 1765418427,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: The PR description mentions `BaseConstraint.validate` and `ValidationError`. I need to find the `BaseConstraint` class to understand how to modify it. I'll start by searching for `BaseConstraint` in the `django` directory.\n\n```tool\n{\"name\": \"search_files\", \"args\": {\"query\": \"class BaseConstraint\", \"path\": \"django\"}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 83,
+            "prompt_tokens": 4933,
+            "total_tokens": 5016,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 83,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": null,
+              "text_tokens": 4933,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\ndjango/db/models/constraints.py:19:class BaseConstraint:\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Okay, `BaseConstraint` is located in `django/db/models/constraints.py`. Now I need to read this file to understand its structure and how `validate` is implemented.\n\n```tool\n{\"name\": \"read_file\", \"args\": {\"path\": \"django/db/models/constraints.py\"}}\n```",
+      "extra": {
+        "response": {
+          "id": "vSU6adKECtmtgLUP4YqI6Ac",
+          "created": 1765418429,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: Okay, `BaseConstraint` is located in `django/db/models/constraints.py`. Now I need to read this file to understand its structure and how `validate` is implemented.\n\n```tool\n{\"name\": \"read_file\", \"args\": {\"path\": \"django/db/models/constraints.py\"}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 73,
+            "prompt_tokens": 5051,
+            "total_tokens": 5124,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 73,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": null,
+              "text_tokens": 5051,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<warning>\nThe output of your last command was too long.\nPlease try a different command that produces less output.\nIf you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.\nIf you're using grep or find and it produced too much output, you can use a more selective search pattern.\nIf you really need to see something from the full command's output, you can redirect output to a file and then search in that file.\n</warning><output_head>\nimport warnings\nfrom enum import Enum\nfrom types import NoneType\n\nfrom django.core.exceptions import FieldError, ValidationError\nfrom django.db import connections\nfrom django.db.models.expressions import Exists, ExpressionList, F, OrderBy\nfrom django.db.models.indexes import IndexExpression\nfrom django.db.models.lookups import Exact\nfrom django.db.models.query_utils import Q\nfrom django.db.models.sql.query import Query\nfrom django.db.utils import DEFAULT_DB_ALIAS\nfrom django.utils.deprecation import RemovedInDjango60Warning\nfrom django.utils.translation import gettext_lazy as _\n\n__all__ = [\"BaseConstraint\", \"CheckConstraint\", \"Deferrable\", \"UniqueConstraint\"]\n\n\nclass BaseConstraint:\n    default_violation_error_message = _(\"Constraint \u201c%(name)s\u201d is violated.\")\n    violation_error_message = None\n\n    # RemovedInDjango60Warning: When the deprecation ends, replace with:\n    # def __init__(self, *, name, violation_error_message=None):\n    def __init__(self, *args, name=None, violation_error_message=None):\n        # RemovedInDjango60Warning.\n        if name is None and not args:\n            raise TypeError(\n                f\"{self.__class__.__name__}.__init__() missing 1 required keyword-only \"\n                f\"argument: 'name'\"\n            )\n        self.name = name\n        if violation_error_message is not None:\n            self.violation_error_message = violation_error_message\n        else:\n            self.violation_error_message = self.default_violation_error_message\n        # RemovedInDjango60Warning.\n        if args:\n            warnings.warn(\n                f\"Passing positional arguments to {self.__class__.__name__} is \"\n                f\"deprecated.\",\n                RemovedInDjango60Warning,\n                stacklevel=2,\n            )\n            for arg, attr in zip(args, [\"name\", \"violation_error_message\"]):\n                if arg:\n                    setattr(self, attr, arg)\n\n    @property\n    def contains_expressions(self):\n        return False\n\n    def constraint_sql(self, model, schema_editor):\n        raise NotImplementedError(\"This method must be implemented by a subclass.\")\n\n    def create_sql(self, model, schema_editor):\n        raise NotImplementedError(\"This method must be implemented by a subclass.\")\n\n    def remove_sql(self, model, schema_editor):\n        raise NotImplementedError(\"This method must be implemented by a subclass.\")\n\n    def validate(self, model, instance, exclude=None, using=DEFAULT_DB_ALIAS):\n        raise NotImplementedError(\"This method must be implemented by a subclass.\")\n\n    def get_violation_error_message(self):\n        return self.violation_error_message % {\"name\": self.name}\n\n    def deconstruct(self):\n        path = \"%s.%s\" % (self.__class__.__module__, self.__class__.__name__)\n        path = path.replace(\"django.db.models.constraints\", \"django.db.models\")\n        kwargs = {\"name\": self.name}\n        if (\n            self.violation_error_message is not None\n            and self.violation_error_message != self.default_violation_error_message\n        ):\n            kwargs[\"violation_error_message\"] = self.violation_error_message\n        return (path, (), kwargs)\n\n    def clone(self):\n        _, args, kwargs = self.deconstruct()\n        return self.__class__(*args, **kwargs)\n\n\nclass CheckConstraint(BaseConstraint):\n    def __init__(self, *, check, name, violation_error_message=None):\n        self.check = check\n        if not getattr(check, \"conditional\", False):\n            raise TypeError(\n                \"CheckConstraint.check must be a Q instance or boolean expression.\"\n            )\n        super().__init__(name=name, violation_error_message=violation_error_message)\n\n    def _get_check_sql(self, model, schema_editor):\n        query = Query(model=model, alias_cols=False)\n        where = query.build_where(self.check)\n        compiler = query.get_compiler(connection=schema_editor.connection)\n        sql, params = where.as_sql(compiler, schema_editor.connection)\n        return sql % tuple(schema_editor.quote_value(p) for p in params)\n\n    def constraint_sql(self, model, schema_editor):\n        check = self._get_check_sql(model, schema_editor)\n        return schema_editor._check_sql(self.name, check)\n\n    def create_sql(self, model, schema_editor):\n        check = self._get_check_sql(model, schema_editor)\n        return schema_editor._create_check_sql(model, self.name, check)\n\n    def remove_sql(self, model, schema_editor):\n        return schema_editor._delete_check_sql(model, self.name)\n\n    def validate(self, model, instance, exclude=None, using=DEFAULT_DB_ALIAS):\n        against = instance._get_field_value_map(meta=model._meta, exclude=exclude)\n        try:\n            if not Q(self.check).check(against, using=using):\n                raise ValidationError(self.get_violation_error_message())\n        except FieldError:\n            pass\n\n    def __repr__(self):\n        return \"<%s: check=%s name=%s%s>\" % (\n            self.__class__.__qualname__,\n            self.che\n</output_head>\n<elided_chars>\n6863 characters elided\n</elided_chars>\n<output_tail>\nr(self.fields),\n            \"\" if not self.expressions else \" expressions=%s\" % repr(self.expressions),\n            \" name=%s\" % repr(self.name),\n            \"\" if self.condition is None else \" condition=%s\" % self.condition,\n            \"\" if self.deferrable is None else \" deferrable=%r\" % self.deferrable,\n            \"\" if not self.include else \" include=%s\" % repr(self.include),\n            \"\" if not self.opclasses else \" opclasses=%s\" % repr(self.opclasses),\n            (\n                \"\"\n                if self.violation_error_message is None\n                or self.violation_error_message == self.default_violation_error_message\n                else \" violation_error_message=%r\" % self.violation_error_message\n            ),\n        )\n\n    def __eq__(self, other):\n        if isinstance(other, UniqueConstraint):\n            return (\n                self.name == other.name\n                and self.fields == other.fields\n                and self.condition == other.condition\n                and self.deferrable == other.deferrable\n                and self.include == other.include\n                and self.opclasses == other.opclasses\n                and self.expressions == other.expressions\n                and self.violation_error_message == other.violation_error_message\n            )\n        return super().__eq__(other)\n\n    def deconstruct(self):\n        path, args, kwargs = super().deconstruct()\n        if self.fields:\n            kwargs[\"fields\"] = self.fields\n        if self.condition:\n            kwargs[\"condition\"] = self.condition\n        if self.deferrable:\n            kwargs[\"deferrable\"] = self.deferrable\n        if self.include:\n            kwargs[\"include\"] = self.include\n        if self.opclasses:\n            kwargs[\"opclasses\"] = self.opclasses\n        return path, self.expressions, kwargs\n\n    def validate(self, model, instance, exclude=None, using=DEFAULT_DB_ALIAS):\n        queryset = model._default_manager.using(using)\n        if self.fields:\n            lookup_kwargs = {}\n            for field_name in self.fields:\n                if exclude and field_name in exclude:\n                    return\n                field = model._meta.get_field(field_name)\n                lookup_value = getattr(instance, field.attname)\n                if lookup_value is None or (\n                    lookup_value == \"\"\n                    and connections[using].features.interprets_empty_strings_as_nulls\n                ):\n                    # A composite constraint containing NULL value cannot cause\n                    # a violation since NULL != NULL in SQL.\n                    return\n                lookup_kwargs[field.name] = lookup_value\n            queryset = queryset.filter(**lookup_kwargs)\n        else:\n            # Ignore constraints with excluded fields.\n            if exclude:\n                for expression in self.expressions:\n                    if hasattr(expression, \"flatten\"):\n                        for expr in expression.flatten():\n                            if isinstance(expr, F) and expr.name in exclude:\n                                return\n                    elif isinstance(expression, F) and expression.name in exclude:\n                        return\n            replacements = {\n                F(field): value\n                for field, value in instance._get_field_value_map(\n                    meta=model._meta, exclude=exclude\n                ).items()\n            }\n            expressions = []\n            for expr in self.expressions:\n                # Ignore ordering.\n                if isinstance(expr, OrderBy):\n                    expr = expr.expression\n                expressions.append(Exact(expr, expr.replace_expressions(replacements)))\n            queryset = queryset.filter(*expressions)\n        model_class_pk = instance._get_pk_val(model._meta)\n        if not instance._state.adding and model_class_pk is not None:\n            queryset = queryset.exclude(pk=model_class_pk)\n        if not self.condition:\n            if queryset.exists():\n                if self.expressions:\n                    raise ValidationError(self.get_violation_error_message())\n                # When fields are defined, use the unique_error_message() for\n                # backward compatibility.\n                for model, constraints in instance.get_constraints():\n                    for constraint in constraints:\n                        if constraint is self:\n                            raise ValidationError(\n                                instance.unique_error_message(model, self.fields)\n                            )\n        else:\n            against = instance._get_field_value_map(meta=model._meta, exclude=exclude)\n            try:\n                if (self.condition & Exists(queryset.filter(self.condition))).check(\n                    against, using=using\n                ):\n                    raise ValidationError(self.get_violation_error_message())\n            except FieldError:\n                pass\n\n</output_tail>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: The output was too long, but I got the relevant parts. I can see `BaseConstraint` and `CheckConstraint` and `UniqueConstraint` classes. The `BaseConstraint` has `violation_error_message` and `default_violation_error_message`. The `__init__` method of `BaseConstraint` takes `violation_error_message` as an argument.\n\nThe PR description states: \"It is currently possible to customize the violation_error_message of a ValidationError raised by a constraint but not the code.\" and \"I'd like to add a new violation_error_message parameter to BaseConstraint to allow to easily add one.\" This seems to be a misunderstanding of the current code, as `violation_error_message` is already a parameter.\n\nThe core of the request is to allow customizing the `code` attribute of `ValidationError`. Looking at `CheckConstraint.validate` and `UniqueConstraint.validate`, they both raise `ValidationError` without specifying a `code`.\n\nI need to:\n1. Add a `violation_error_code` attribute to `BaseConstraint` with a default value.\n2. Modify the `__init__` method of `BaseConstraint` to accept `violation_error_code`.\n3. Modify `get_violation_error_message` to also return the code.\n4. Update `CheckConstraint.validate` and `UniqueConstraint.validate` to pass this `violation_error_code` when raising `ValidationError`.\n\nLet's start by adding `violation_error_code` to `BaseConstraint` and its `__init__` method. I'll use `sed` to modify the file.\n\nFirst, I'll add `default_violation_error_code = \"constraint\"` to `BaseConstraint`.\nThen, I'll add `violation_error_code=None` to the `__init__` signature and handle its assignment.\n\n```bash\nsed -i '/default_violation_error_message =/a \\    default_violation_error_code = \"constraint\"' django/db/models/constraints.py && \\\nsed -i 's/def __init__(self, \\*args, name=None, violation_error_message=None):/def __init__(self, \\*args, name=None, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py && \\\nsed -i '/self.violation_error_message = self.default_violation_error_message/a \\        if violation_error_code is not None:\\\n            self.violation_error_code = violation_error_code\\\n        else:\\\n            self.violation_error_code = \"constraint\"' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "viU6aZ6fG72ylb4P9r2jkAk",
+          "created": 1765418430,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: The output was too long, but I got the relevant parts. I can see `BaseConstraint` and `CheckConstraint` and `UniqueConstraint` classes. The `BaseConstraint` has `violation_error_message` and `default_violation_error_message`. The `__init__` method of `BaseConstraint` takes `violation_error_message` as an argument.\n\nThe PR description states: \"It is currently possible to customize the violation_error_message of a ValidationError raised by a constraint but not the code.\" and \"I'd like to add a new violation_error_message parameter to BaseConstraint to allow to easily add one.\" This seems to be a misunderstanding of the current code, as `violation_error_message` is already a parameter.\n\nThe core of the request is to allow customizing the `code` attribute of `ValidationError`. Looking at `CheckConstraint.validate` and `UniqueConstraint.validate`, they both raise `ValidationError` without specifying a `code`.\n\nI need to:\n1. Add a `violation_error_code` attribute to `BaseConstraint` with a default value.\n2. Modify the `__init__` method of `BaseConstraint` to accept `violation_error_code`.\n3. Modify `get_violation_error_message` to also return the code.\n4. Update `CheckConstraint.validate` and `UniqueConstraint.validate` to pass this `violation_error_code` when raising `ValidationError`.\n\nLet's start by adding `violation_error_code` to `BaseConstraint` and its `__init__` method. I'll use `sed` to modify the file.\n\nFirst, I'll add `default_violation_error_code = \"constraint\"` to `BaseConstraint`.\nThen, I'll add `violation_error_code=None` to the `__init__` signature and handle its assignment.\n\n```bash\nsed -i '/default_violation_error_message =/a \\    default_violation_error_code = \"constraint\"' django/db/models/constraints.py && \\\nsed -i 's/def __init__(self, \\*args, name=None, violation_error_message=None):/def __init__(self, \\*args, name=None, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py && \\\nsed -i '/self.violation_error_message = self.default_violation_error_message/a \\        if violation_error_code is not None:\\\n            self.violation_error_code = violation_error_code\\\n        else:\\\n            self.violation_error_code = \"constraint\"' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 616,
+            "prompt_tokens": 7699,
+            "total_tokens": 8315,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 616,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 4065,
+              "text_tokens": 3634,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: I've added the `default_violation_error_code` and updated the `__init__` method in `BaseConstraint`. Now I need to modify the `deconstruct` method to include `violation_error_code` when it's not the default.\n\n```bash\nsed -i '/if (/{\nN\nN\ns/        if (\\n            self.violation_error_message is not None\\n            and self.violation_error_message != self.default_violation_error_message\\n        ):/        if (\\\n            self.violation_error_message is not None\\\n            and self.violation_error_message != self.default_violation_error_message\\\n        ):\\\n            kwargs[\"violation_error_message\"] = self.violation_error_message\\\n        if (\\\n            self.violation_error_code is not None\\\n            and self.violation_error_code != self.default_violation_error_code\\\n        ):/\n}' django/db/models/constraints.py && \\\nsed -i '/if (/{\nN\nN\ns/            kwargs\\[\"violation_error_message\"\\] = self.violation_error_message/            kwargs[\"violation_error_message\"] = self.violation_error_message\\\n        if (\\\n            self.violation_error_code is not None\\\n            and self.violation_error_code != self.default_violation_error_code\\\n        ):\\\n            kwargs[\"violation_error_code\"] = self.violation_error_code/\n}' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "wSU6abTTLL2Gi-8PrL2toAo",
+          "created": 1765418434,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: I've added the `default_violation_error_code` and updated the `__init__` method in `BaseConstraint`. Now I need to modify the `deconstruct` method to include `violation_error_code` when it's not the default.\n\n```bash\nsed -i '/if (/{\nN\nN\ns/        if (\\n            self.violation_error_message is not None\\n            and self.violation_error_message != self.default_violation_error_message\\n        ):/        if (\\\n            self.violation_error_message is not None\\\n            and self.violation_error_message != self.default_violation_error_message\\\n        ):\\\n            kwargs[\"violation_error_message\"] = self.violation_error_message\\\n        if (\\\n            self.violation_error_code is not None\\\n            and self.violation_error_code != self.default_violation_error_code\\\n        ):/\n}' django/db/models/constraints.py && \\\nsed -i '/if (/{\nN\nN\ns/            kwargs\\[\"violation_error_message\"\\] = self.violation_error_message/            kwargs[\"violation_error_message\"] = self.violation_error_message\\\n        if (\\\n            self.violation_error_code is not None\\\n            and self.violation_error_code != self.default_violation_error_code\\\n        ):\\\n            kwargs[\"violation_error_code\"] = self.violation_error_code/\n}' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 380,
+            "prompt_tokens": 8332,
+            "total_tokens": 8712,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 380,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 7109,
+              "text_tokens": 1223,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: The previous `sed` command was a bit complex and might have issues with multi-line matching. I'll simplify it. I need to add a block for `violation_error_code` similar to `violation_error_message` in the `deconstruct` method.\n\nLet's try this:\n\n```bash\nsed -i '/kwargs\\[\"violation_error_message\"\\] = self.violation_error_message/a \\        if self.violation_error_code is not None and self.violation_error_code != self.default_violation_error_code:\\\n            kwargs[\"violation_error_code\"] = self.violation_error_code' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "wyU6abnuMf2AqMgP6dCj0Qk",
+          "created": 1765418436,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: The previous `sed` command was a bit complex and might have issues with multi-line matching. I'll simplify it. I need to add a block for `violation_error_code` similar to `violation_error_message` in the `deconstruct` method.\n\nLet's try this:\n\n```bash\nsed -i '/kwargs\\[\"violation_error_message\"\\] = self.violation_error_message/a \\        if self.violation_error_code is not None and self.violation_error_code != self.default_violation_error_code:\\\n            kwargs[\"violation_error_code\"] = self.violation_error_code' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 166,
+            "prompt_tokens": 8729,
+            "total_tokens": 8895,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 166,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 8119,
+              "text_tokens": 610,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Now that `violation_error_code` is handled in `__init__` and `deconstruct`, I need to modify the `validate` methods in `CheckConstraint` and `UniqueConstraint` to pass this code when raising `ValidationError`.\n\nFirst, let's look at `CheckConstraint.validate`. I need to change `raise ValidationError(self.get_violation_error_message())` to `raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)`.\n\n```bash\nsed -i \"s/raise ValidationError(self.get_violation_error_message())/raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)/\" django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "xSU6ae_jBuKrlb4PxeHh8A8",
+          "created": 1765418437,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: Now that `violation_error_code` is handled in `__init__` and `deconstruct`, I need to modify the `validate` methods in `CheckConstraint` and `UniqueConstraint` to pass this code when raising `ValidationError`.\n\nFirst, let's look at `CheckConstraint.validate`. I need to change `raise ValidationError(self.get_violation_error_message())` to `raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)`.\n\n```bash\nsed -i \"s/raise ValidationError(self.get_violation_error_message())/raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)/\" django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 178,
+            "prompt_tokens": 8912,
+            "total_tokens": 9090,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 178,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 4055,
+              "text_tokens": 4857,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: I've updated `CheckConstraint.validate`. Now I need to do the same for `UniqueConstraint.validate`. There are two places where `ValidationError` is raised in `UniqueConstraint.validate`.\n\n```bash\nsed -i \"s/raise ValidationError(self.get_violation_error_message())/raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)/g\" django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "xiU6aZaqOrykqMgPrpO-0As",
+          "created": 1765418439,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: I've updated `CheckConstraint.validate`. Now I need to do the same for `UniqueConstraint.validate`. There are two places where `ValidationError` is raised in `UniqueConstraint.validate`.\n\n```bash\nsed -i \"s/raise ValidationError(self.get_violation_error_message())/raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)/g\" django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 107,
+            "prompt_tokens": 9107,
+            "total_tokens": 9214,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 107,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 8104,
+              "text_tokens": 1003,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: I've updated both instances of `ValidationError` in `UniqueConstraint.validate`.\n\nNow, I need to modify the `__init__` method of `CheckConstraint` and `UniqueConstraint` to accept `violation_error_code` and pass it to the `super().__init__` call.\n\nFirst, `CheckConstraint`:\n\n```bash\nsed -i 's/def __init__(self, \\*, check, name, violation_error_message=None):/def __init__(self, \\*, check, name, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py && \\\nsed -i 's/super().__init__(name=name, violation_error_message=violation_error_message)/super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)/' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "yiU6abz-Lf2AqMgP6dCj0Qk",
+          "created": 1765418443,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: I've updated both instances of `ValidationError` in `UniqueConstraint.validate`.\n\nNow, I need to modify the `__init__` method of `CheckConstraint` and `UniqueConstraint` to accept `violation_error_code` and pass it to the `super().__init__` call.\n\nFirst, `CheckConstraint`:\n\n```bash\nsed -i 's/def __init__(self, \\*, check, name, violation_error_message=None):/def __init__(self, \\*, check, name, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py && \\\nsed -i 's/super().__init__(name=name, violation_error_message=violation_error_message)/super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)/' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 219,
+            "prompt_tokens": 9231,
+            "total_tokens": 9450,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 219,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 8097,
+              "text_tokens": 1134,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Now for `UniqueConstraint`. I need to find its `__init__` method.\n\n```tool\n{\"name\": \"search_files\", \"args\": {\"query\": \"class UniqueConstraint\", \"path\": \"django/db/models/constraints.py\"}}\n```",
+      "extra": {
+        "response": {
+          "id": "zCU6aen2H5ani-8Pqfq_6A8",
+          "created": 1765418444,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: Now for `UniqueConstraint`. I need to find its `__init__` method.\n\n```tool\n{\"name\": \"search_files\", \"args\": {\"query\": \"class UniqueConstraint\", \"path\": \"django/db/models/constraints.py\"}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 60,
+            "prompt_tokens": 9467,
+            "total_tokens": 9527,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 60,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 8091,
+              "text_tokens": 1376,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n163:class UniqueConstraint(BaseConstraint):\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Okay, `UniqueConstraint` starts on line 163. I'll read a bit around that line to find its `__init__` method.\n\n```tool\n{\"name\": \"read_file\", \"args\": {\"path\": \"django/db/models/constraints.py\", \"start_line\": 160, \"end_line\": 180}}\n```",
+      "extra": {
+        "response": {
+          "id": "zSU6aa3LJ72ylb4P9r2jkAk",
+          "created": 1765418446,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: Okay, `UniqueConstraint` starts on line 163. I'll read a bit around that line to find its `__init__` method.\n\n```tool\n{\"name\": \"read_file\", \"args\": {\"path\": \"django/db/models/constraints.py\", \"start_line\": 160, \"end_line\": 180}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 87,
+            "prompt_tokens": 9556,
+            "total_tokens": 9643,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 87,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 9094,
+              "text_tokens": 462,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n        return f\"{self.__class__.__qualname__}.{self._name_}\"\n\n\nclass UniqueConstraint(BaseConstraint):\n    def __init__(\n        self,\n        *expressions,\n        fields=(),\n        name=None,\n        condition=None,\n        deferrable=None,\n        include=None,\n        opclasses=(),\n        violation_error_message=None,\n    ):\n        if not name:\n            raise ValueError(\"A unique constraint must be named.\")\n        if not expressions and not fields:\n            raise ValueError(\n                \"At least one field or expression is required to define a \"\n                \"unique constraint.\"\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: I've found the `__init__` method for `UniqueConstraint`. Now I need to add `violation_error_code=None` to its signature and pass it to `super().__init__`.\n\n```bash\nsed -i 's/violation_error_message=None,/violation_error_message=None, violation_error_code=None,/' django/db/models/constraints.py && \\\nsed -i 's/super().__init__(name=name, violation_error_message=violation_error_message)/super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)/' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "ziU6aeuGJsubqMgP8OfH8AI",
+          "created": 1765418447,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: I've found the `__init__` method for `UniqueConstraint`. Now I need to add `violation_error_code=None` to its signature and pass it to `super().__init__`.\n\n```bash\nsed -i 's/violation_error_message=None,/violation_error_message=None, violation_error_code=None,/' django/db/models/constraints.py && \\\nsed -i 's/super().__init__(name=name, violation_error_message=violation_error_message)/super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)/' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 169,
+            "prompt_tokens": 9805,
+            "total_tokens": 9974,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 169,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 8078,
+              "text_tokens": 1727,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "```tool\n{\"name\": \"git_diff\", \"args\": {}}\n```",
+      "extra": {
+        "response": {
+          "id": "zyU6adzINOuQqMgPue-rwQI",
+          "created": 1765418448,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "```tool\n{\"name\": \"git_diff\", \"args\": {}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 74,
+            "prompt_tokens": 9991,
+            "total_tokens": 10065,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": 56,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 18,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 9081,
+              "text_tokens": 910,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\ndiff --git a/django/db/models/constraints.py b/django/db/models/constraints.py\nindex 075ecee1be..cf3eac7735 100644\n--- a/django/db/models/constraints.py\n+++ b/django/db/models/constraints.py\n@@ -18,11 +18,12 @@ __all__ = [\"BaseConstraint\", \"CheckConstraint\", \"Deferrable\", \"UniqueConstraint\"\n \n class BaseConstraint:\n     default_violation_error_message = _(\"Constraint \u201c%(name)s\u201d is violated.\")\n+    default_violation_error_code = \"constraint\"\n     violation_error_message = None\n \n     # RemovedInDjango60Warning: When the deprecation ends, replace with:\n     # def __init__(self, *, name, violation_error_message=None):\n-    def __init__(self, *args, name=None, violation_error_message=None):\n+    def __init__(self, *args, name=None, violation_error_message=None, violation_error_code=None, violation_error_code=None):\n         # RemovedInDjango60Warning.\n         if name is None and not args:\n             raise TypeError(\n@@ -34,6 +35,10 @@ class BaseConstraint:\n             self.violation_error_message = violation_error_message\n         else:\n             self.violation_error_message = self.default_violation_error_message\n+        if violation_error_code is not None:\n+            self.violation_error_code = violation_error_code\n+        else:\n+            self.violation_error_code = \"constraint\"\n         # RemovedInDjango60Warning.\n         if args:\n             warnings.warn(\n@@ -74,6 +79,8 @@ class BaseConstraint:\n             and self.violation_error_message != self.default_violation_error_message\n         ):\n             kwargs[\"violation_error_message\"] = self.violation_error_message\n+        if self.violation_error_code is not None and self.violation_error_code != self.default_violation_error_code:\n+            kwargs[\"violation_error_code\"] = self.violation_error_code\n         return (path, (), kwargs)\n \n     def clone(self):\n@@ -82,13 +89,13 @@ class BaseConstraint:\n \n \n class CheckConstraint(BaseConstraint):\n-    def __init__(self, *, check, name, violation_error_message=None):\n+    def __init__(self, *, check, name, violation_error_message=None, violation_error_code=None, violation_error_code=None):\n         self.check = check\n         if not getattr(check, \"conditional\", False):\n             raise TypeError(\n                 \"CheckConstraint.check must be a Q instance or boolean expression.\"\n             )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     def _get_check_sql(self, model, schema_editor):\n         query = Query(model=model, alias_cols=False)\n@@ -112,7 +119,7 @@ class CheckConstraint(BaseConstraint):\n         against = instance._get_field_value_map(meta=model._meta, exclude=exclude)\n         try:\n             if not Q(self.check).check(against, using=using):\n-                raise ValidationError(self.get_violation_error_message())\n+                raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n         except FieldError:\n             pass\n \n@@ -163,7 +170,7 @@ class UniqueConstraint(BaseConstraint):\n         deferrable=None,\n         include=None,\n         opclasses=(),\n-        violation_error_message=None,\n+        violation_error_message=None, violation_error_code=None,\n     ):\n         if not name:\n             raise ValueError(\"A unique constraint must be named.\")\n@@ -213,7 +220,7 @@ class UniqueConstraint(BaseConstraint):\n             F(expression) if isinstance(expression, str) else expression\n             for expression in expressions\n         )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     @property\n     def contains_expressions(self):\n@@ -385,7 +392,7 @@ class UniqueConstraint(BaseConstraint):\n         if not self.condition:\n             if queryset.exists():\n                 if self.expressions:\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n                 # When fields are defined, use the unique_error_message() for\n                 # backward compatibility.\n                 for model, constraints in instance.get_constraints():\n@@ -400,6 +407,6 @@ class UniqueConstraint(BaseConstraint):\n                 if (self.condition & Exists(queryset.filter(self.condition))).check(\n                     against, using=using\n                 ):\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n             except FieldError:\n                 pass\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: I see a couple of issues in the `git_diff` output:\n1. In `BaseConstraint.__init__`, `violation_error_code=None` is duplicated: `violation_error_code=None, violation_error_code=None)`. This is likely due to my `sed` command.\n2. In `CheckConstraint.__init__`, `violation_error_code=None` is also duplicated.\n\nI need to fix these duplicates. I'll read the file again to get the exact lines and then use `sed` to correct them.\n\nFirst, let's fix `BaseConstraint.__init__`.\n\n```bash\nsed -i 's/def __init__(self, \\*args, name=None, violation_error_message=None, violation_error_code=None, violation_error_code=None):/def __init__(self, \\*args, name=None, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "0iU6aYMOy5yoyA-E7YHwBg",
+          "created": 1765418450,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: I see a couple of issues in the `git_diff` output:\n1. In `BaseConstraint.__init__`, `violation_error_code=None` is duplicated: `violation_error_code=None, violation_error_code=None)`. This is likely due to my `sed` command.\n2. In `CheckConstraint.__init__`, `violation_error_code=None` is also duplicated.\n\nI need to fix these duplicates. I'll read the file again to get the exact lines and then use `sed` to correct them.\n\nFirst, let's fix `BaseConstraint.__init__`.\n\n```bash\nsed -i 's/def __init__(self, \\*args, name=None, violation_error_message=None, violation_error_code=None, violation_error_code=None):/def __init__(self, \\*args, name=None, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 230,
+            "prompt_tokens": 11395,
+            "total_tokens": 11625,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 230,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 9089,
+              "text_tokens": 2306,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Now, let's fix `CheckConstraint.__init__`.\n\n```bash\nsed -i 's/def __init__(self, \\*, check, name, violation_error_message=None, violation_error_code=None, violation_error_code=None):/def __init__(self, \\*, check, name, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py\n```",
+      "extra": {
+        "response": {
+          "id": "0yU6af3jM5KVi-8Pt56cmQs",
+          "created": 1765418452,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: Now, let's fix `CheckConstraint.__init__`.\n\n```bash\nsed -i 's/def __init__(self, \\*, check, name, violation_error_message=None, violation_error_code=None, violation_error_code=None):/def __init__(self, \\*, check, name, violation_error_message=None, violation_error_code=None):/' django/db/models/constraints.py\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 103,
+            "prompt_tokens": 11642,
+            "total_tokens": 11745,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 103,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 11103,
+              "text_tokens": 539,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: I've fixed the duplicate `violation_error_code` parameters in the `__init__` methods. I'll run `git_diff` again to confirm the changes are correct.\n\n```tool\n{\"name\": \"git_diff\", \"args\": {}}\n```",
+      "extra": {
+        "response": {
+          "id": "1CU6aYnZOaj8lb4P6dnEqQw",
+          "created": 1765418453,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "THOUGHT: I've fixed the duplicate `violation_error_code` parameters in the `__init__` methods. I'll run `git_diff` again to confirm the changes are correct.\n\n```tool\n{\"name\": \"git_diff\", \"args\": {}}\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 63,
+            "prompt_tokens": 11762,
+            "total_tokens": 11825,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": null,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 63,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 11096,
+              "text_tokens": 666,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\ndiff --git a/django/db/models/constraints.py b/django/db/models/constraints.py\nindex 075ecee1be..afc99342a1 100644\n--- a/django/db/models/constraints.py\n+++ b/django/db/models/constraints.py\n@@ -18,11 +18,12 @@ __all__ = [\"BaseConstraint\", \"CheckConstraint\", \"Deferrable\", \"UniqueConstraint\"\n \n class BaseConstraint:\n     default_violation_error_message = _(\"Constraint \u201c%(name)s\u201d is violated.\")\n+    default_violation_error_code = \"constraint\"\n     violation_error_message = None\n \n     # RemovedInDjango60Warning: When the deprecation ends, replace with:\n     # def __init__(self, *, name, violation_error_message=None):\n-    def __init__(self, *args, name=None, violation_error_message=None):\n+    def __init__(self, *args, name=None, violation_error_message=None, violation_error_code=None):\n         # RemovedInDjango60Warning.\n         if name is None and not args:\n             raise TypeError(\n@@ -34,6 +35,10 @@ class BaseConstraint:\n             self.violation_error_message = violation_error_message\n         else:\n             self.violation_error_message = self.default_violation_error_message\n+        if violation_error_code is not None:\n+            self.violation_error_code = violation_error_code\n+        else:\n+            self.violation_error_code = \"constraint\"\n         # RemovedInDjango60Warning.\n         if args:\n             warnings.warn(\n@@ -74,6 +79,8 @@ class BaseConstraint:\n             and self.violation_error_message != self.default_violation_error_message\n         ):\n             kwargs[\"violation_error_message\"] = self.violation_error_message\n+        if self.violation_error_code is not None and self.violation_error_code != self.default_violation_error_code:\n+            kwargs[\"violation_error_code\"] = self.violation_error_code\n         return (path, (), kwargs)\n \n     def clone(self):\n@@ -82,13 +89,13 @@ class BaseConstraint:\n \n \n class CheckConstraint(BaseConstraint):\n-    def __init__(self, *, check, name, violation_error_message=None):\n+    def __init__(self, *, check, name, violation_error_message=None, violation_error_code=None):\n         self.check = check\n         if not getattr(check, \"conditional\", False):\n             raise TypeError(\n                 \"CheckConstraint.check must be a Q instance or boolean expression.\"\n             )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     def _get_check_sql(self, model, schema_editor):\n         query = Query(model=model, alias_cols=False)\n@@ -112,7 +119,7 @@ class CheckConstraint(BaseConstraint):\n         against = instance._get_field_value_map(meta=model._meta, exclude=exclude)\n         try:\n             if not Q(self.check).check(against, using=using):\n-                raise ValidationError(self.get_violation_error_message())\n+                raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n         except FieldError:\n             pass\n \n@@ -163,7 +170,7 @@ class UniqueConstraint(BaseConstraint):\n         deferrable=None,\n         include=None,\n         opclasses=(),\n-        violation_error_message=None,\n+        violation_error_message=None, violation_error_code=None,\n     ):\n         if not name:\n             raise ValueError(\"A unique constraint must be named.\")\n@@ -213,7 +220,7 @@ class UniqueConstraint(BaseConstraint):\n             F(expression) if isinstance(expression, str) else expression\n             for expression in expressions\n         )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     @property\n     def contains_expressions(self):\n@@ -385,7 +392,7 @@ class UniqueConstraint(BaseConstraint):\n         if not self.condition:\n             if queryset.exists():\n                 if self.expressions:\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n                 # When fields are defined, use the unique_error_message() for\n                 # backward compatibility.\n                 for model, constraints in instance.get_constraints():\n@@ -400,6 +407,6 @@ class UniqueConstraint(BaseConstraint):\n                 if (self.condition & Exists(queryset.filter(self.condition))).check(\n                     against, using=using\n                 ):\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n             except FieldError:\n                 pass\n</output>"
+    },
+    {
+      "role": "assistant",
+      "content": "```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached\n```",
+      "extra": {
+        "response": {
+          "id": "1iU6acCTBrykqMgPrpO-0As",
+          "created": 1765418454,
+          "model": "gemini-2.5-flash",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached\n```",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "images": [],
+                "thinking_blocks": [],
+                "provider_specific_fields": null
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 297,
+            "prompt_tokens": 13196,
+            "total_tokens": 13493,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": null,
+              "reasoning_tokens": 269,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 28,
+              "image_tokens": null
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cached_tokens": 9086,
+              "text_tokens": 4110,
+              "image_tokens": null
+            }
+          },
+          "vertex_ai_grounding_metadata": [],
+          "vertex_ai_url_context_metadata": [],
+          "vertex_ai_safety_results": [],
+          "vertex_ai_citation_metadata": []
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "diff --git a/django/db/models/constraints.py b/django/db/models/constraints.py\nindex 075ecee1be..afc99342a1 100644\n--- a/django/db/models/constraints.py\n+++ b/django/db/models/constraints.py\n@@ -18,11 +18,12 @@ __all__ = [\"BaseConstraint\", \"CheckConstraint\", \"Deferrable\", \"UniqueConstraint\"\n \n class BaseConstraint:\n     default_violation_error_message = _(\"Constraint \u201c%(name)s\u201d is violated.\")\n+    default_violation_error_code = \"constraint\"\n     violation_error_message = None\n \n     # RemovedInDjango60Warning: When the deprecation ends, replace with:\n     # def __init__(self, *, name, violation_error_message=None):\n-    def __init__(self, *args, name=None, violation_error_message=None):\n+    def __init__(self, *args, name=None, violation_error_message=None, violation_error_code=None):\n         # RemovedInDjango60Warning.\n         if name is None and not args:\n             raise TypeError(\n@@ -34,6 +35,10 @@ class BaseConstraint:\n             self.violation_error_message = violation_error_message\n         else:\n             self.violation_error_message = self.default_violation_error_message\n+        if violation_error_code is not None:\n+            self.violation_error_code = violation_error_code\n+        else:\n+            self.violation_error_code = \"constraint\"\n         # RemovedInDjango60Warning.\n         if args:\n             warnings.warn(\n@@ -74,6 +79,8 @@ class BaseConstraint:\n             and self.violation_error_message != self.default_violation_error_message\n         ):\n             kwargs[\"violation_error_message\"] = self.violation_error_message\n+        if self.violation_error_code is not None and self.violation_error_code != self.default_violation_error_code:\n+            kwargs[\"violation_error_code\"] = self.violation_error_code\n         return (path, (), kwargs)\n \n     def clone(self):\n@@ -82,13 +89,13 @@ class BaseConstraint:\n \n \n class CheckConstraint(BaseConstraint):\n-    def __init__(self, *, check, name, violation_error_message=None):\n+    def __init__(self, *, check, name, violation_error_message=None, violation_error_code=None):\n         self.check = check\n         if not getattr(check, \"conditional\", False):\n             raise TypeError(\n                 \"CheckConstraint.check must be a Q instance or boolean expression.\"\n             )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     def _get_check_sql(self, model, schema_editor):\n         query = Query(model=model, alias_cols=False)\n@@ -112,7 +119,7 @@ class CheckConstraint(BaseConstraint):\n         against = instance._get_field_value_map(meta=model._meta, exclude=exclude)\n         try:\n             if not Q(self.check).check(against, using=using):\n-                raise ValidationError(self.get_violation_error_message())\n+                raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n         except FieldError:\n             pass\n \n@@ -163,7 +170,7 @@ class UniqueConstraint(BaseConstraint):\n         deferrable=None,\n         include=None,\n         opclasses=(),\n-        violation_error_message=None,\n+        violation_error_message=None, violation_error_code=None,\n     ):\n         if not name:\n             raise ValueError(\"A unique constraint must be named.\")\n@@ -213,7 +220,7 @@ class UniqueConstraint(BaseConstraint):\n             F(expression) if isinstance(expression, str) else expression\n             for expression in expressions\n         )\n-        super().__init__(name=name, violation_error_message=violation_error_message)\n+        super().__init__(name=name, violation_error_message=violation_error_message, violation_error_code=violation_error_code)\n \n     @property\n     def contains_expressions(self):\n@@ -385,7 +392,7 @@ class UniqueConstraint(BaseConstraint):\n         if not self.condition:\n             if queryset.exists():\n                 if self.expressions:\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n                 # When fields are defined, use the unique_error_message() for\n                 # backward compatibility.\n                 for model, constraints in instance.get_constraints():\n@@ -400,6 +407,6 @@ class UniqueConstraint(BaseConstraint):\n                 if (self.condition & Exists(queryset.filter(self.condition))).check(\n                     against, using=using\n                 ):\n-                    raise ValidationError(self.get_violation_error_message())\n+                    raise ValidationError(self.get_violation_error_message(), code=self.violation_error_code)\n             except FieldError:\n                 pass\n"
+    }
+  ],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "django__django-16560"
+}

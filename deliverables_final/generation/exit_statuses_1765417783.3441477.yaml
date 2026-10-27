@@ -1,0 +1,29 @@
+instances_by_exit_status:
+    CalledProcessError:
+    - django__django-15368
+    - django__django-15863
+    - django__django-15280
+    - django__django-15315
+    - django__django-15987
+    - django__django-16136
+    - django__django-16560
+    - django__django-16661
+    - matplotlib__matplotlib-23299
+    - matplotlib__matplotlib-24870
+    - matplotlib__matplotlib-25332
+    - matplotlib__matplotlib-20826
+    - psf__requests-2317
+    - pydata__xarray-6992
+    - pylint-dev__pylint-4661
+    - pydata__xarray-6461
+    - pytest-dev__pytest-5809
+    - sphinx-doc__sphinx-8595
+    - pytest-dev__pytest-7982
+    - scikit-learn__scikit-learn-13142
+    - sphinx-doc__sphinx-8721
+    - sympy__sympy-14531
+    - sympy__sympy-13852
+    - sympy__sympy-13615
+    - sympy__sympy-15017
+    - sympy__sympy-19346
+    - sympy__sympy-17139

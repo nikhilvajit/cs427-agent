@@ -1,0 +1,68 @@
+diff --git a/django/db/models/aggregates.py b/django/db/models/aggregates.py
+index ac0b62d0bf..f746654ace 100644
+--- a/django/db/models/aggregates.py
++++ b/django/db/models/aggregates.py
+@@ -14,7 +14,7 @@ __all__ = [
+ 
+ 
+ class Aggregate(Func):
+-    template = '%(function)s(%(distinct)s%(expressions)s)'
++    template = '%(function)s(%(distinct)s %(expressions)s)'
+     contains_aggregate = True
+     name = None
+     filter_template = '%s FILTER (WHERE %%(filter)s)'
+diff --git a/tests/aggregation/test_bug.py b/tests/aggregation/test_bug.py
+new file mode 100644
+index 0000000000..c9a4a08511
+--- /dev/null
++++ b/tests/aggregation/test_bug.py
+@@ -0,0 +1,49 @@
++from datetime import timedelta
++from django.db import connection
++from django.db.models import Case, Count, F, Q, Value, When
++from django.test import TestCase
++
++from .models import Author, Book, Publisher
++
++
++class CountDistinctCaseTests(TestCase):
++    @classmethod
++    def setUpTestData(cls):
++        Publisher.objects.create(id=1, name='Publisher 1', num_awards=10, duration=timedelta(days=1))
++        author1 = Author.objects.create(name='Author 1', age=30)
++        author2 = Author.objects.create(name='Author 2', age=40)
++        Book.objects.create(name='Book 1', contact=author1, isbn='1', pages=100, rating=4.5, price=10.00, publisher_id=1, pubdate='2020-01-01')
++        Book.objects.create(name='Book 2', contact=author1, isbn='2', pages=200, rating=3.5, price=20.00, publisher_id=1, pubdate='2020-01-01')
++        Book.objects.create(name='Book 3', contact=author2, isbn='3', pages=300, rating=2.5, price=30.00, publisher_id=1, pubdate='2020-01-01')
++
++    def test_count_distinct_case_with_filter(self):
++        # This scenario triggers the code path where Case is injected due to filter
++        # and supports_aggregate_filter_clause is False.
++        # We expect 'COUNT(DISTINCT CASE WHEN ...)'
++        qs = Author.objects.annotate(
++            book_count=Count(
++                'book_contact_set',
++                distinct=True,
++                filter=Q(name='Author 1')
++            )
++        ).order_by('name')
++        with connection.cursor() as cursor:
++            sql, params = qs.query.sql_with_params()
++            print(f"Generated SQL: {sql}")
++            print(f"Parameters: {params}")
++            self.assertIn('COUNT(DISTINCT CASE WHEN', sql)
++
++    def test_count_distinct_case_without_filter(self):
++        # This scenario should also work correctly, even though it doesn't hit the
++        # specific filter-related code path.
++        qs = Author.objects.annotate(
++            book_count=Count(
++                Case(When(name='Author 1', then=F('book_contact_set')), default=Value(None)),
++                distinct=True,
++            )
++        ).order_by('name')
++        with connection.cursor() as cursor:
++            sql, params = qs.query.sql_with_params()
++            print(f"Generated SQL: {sql}")
++            print(f"Parameters: {params}")
++            self.assertIn('COUNT(DISTINCT CASE WHEN', sql)

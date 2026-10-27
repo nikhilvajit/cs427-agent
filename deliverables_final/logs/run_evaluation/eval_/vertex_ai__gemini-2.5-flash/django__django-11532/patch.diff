@@ -1,0 +1,66 @@
+diff --git a/django/core/mail/utils.py b/django/core/mail/utils.py
+index d18dfe4667..493121f6bd 100644
+--- a/django/core/mail/utils.py
++++ b/django/core/mail/utils.py
+@@ -1,4 +1,5 @@
+ """
++import encodings.idna
+ Email message and email sending related helper functions.
+ """
+ 
+@@ -14,6 +15,10 @@ class CachedDnsName:
+     def get_fqdn(self):
+         if not hasattr(self, '_fqdn'):
+             self._fqdn = socket.getfqdn()
++        try:
++            self._fqdn.encode('ascii')
++        except UnicodeEncodeError:
++            self._fqdn = self._fqdn.encode('idna').decode('ascii')
+         return self._fqdn
+ 
+ 
+diff --git a/settings.py b/settings.py
+new file mode 100644
+index 0000000000..3036b89e94
+--- /dev/null
++++ b/settings.py
+@@ -0,0 +1,15 @@
++SECRET_KEY = 'a-very-secret-key'
++INSTALLED_APPS = [
++    'django.contrib.auth',
++    'django.contrib.contenttypes',
++    'django.contrib.sessions',
++    'django.contrib.messages',
++    'django.contrib.staticfiles',
++    'django.contrib.admin',
++]
++DATABASES = {
++    'default': {
++        'ENGINE': 'django.db.backends.sqlite3',
++        'NAME': ':memory:',
++    }
++}
+diff --git a/temp_test.py b/temp_test.py
+new file mode 100644
+index 0000000000..5df1749f98
+--- /dev/null
++++ b/temp_test.py
+@@ -0,0 +1,18 @@
++from unittest.mock import patch
++from django.core.mail import EmailMessage
++from django.test import TestCase
++import django
++
++class MailPunycodeTest(TestCase):
++    @classmethod
++    def setUpClass(cls):
++        super().setUpClass()
++        django.setup()
++
++    def test_unicode_dns_punycode(self):
++        # Patch DNS_NAME to return a punycode string directly
++        with patch("django.core.mail.utils.DNS_NAME.get_fqdn", return_value="xn--p8s937b"):
++            email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
++            email.encoding = 'iso-8859-1'
++            message = email.message()
++            self.assertIn('xn--p8s937b', message['Message-ID'])

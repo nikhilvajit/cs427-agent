@@ -1,0 +1,37 @@
+diff --git a/django/db/models/query_utils.py b/django/db/models/query_utils.py
+index c957ffa564..8a2cdc416e 100644
+--- a/django/db/models/query_utils.py
++++ b/django/db/models/query_utils.py
+@@ -40,18 +40,22 @@ class Q(tree.Node):
+         super().__init__(children=[*args, *sorted(kwargs.items())], connector=_connector, negated=_negated)
+ 
+     def _combine(self, other, conn):
+-        if not isinstance(other, Q):
++        if isinstance(other, Q):
++            # If the other Q() is empty, ignore it and just use `self`.
++            if not other:
++                _, args, kwargs = self.deconstruct()
++                return type(self)(*args, **kwargs)
++            # Or if this Q is empty, ignore it and just use `other`.
++            elif not self:
++                _, args, kwargs = other.deconstruct()
++                return type(other)(*args, **kwargs)
++        elif getattr(other, 'conditional', False):
++            # other is a conditional expression (e.g. Exists, Subquery,
++            # or an F expression with a boolean output_field).
++            other = Q(other)
++        else:
+             raise TypeError(other)
+ 
+-        # If the other Q() is empty, ignore it and just use `self`.
+-        if not other:
+-            _, args, kwargs = self.deconstruct()
+-            return type(self)(*args, **kwargs)
+-        # Or if this Q is empty, ignore it and just use `other`.
+-        elif not self:
+-            _, args, kwargs = other.deconstruct()
+-            return type(other)(*args, **kwargs)
+-
+         obj = type(self)()
+         obj.connector = conn
+         obj.add(self, conn)

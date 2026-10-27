@@ -1,0 +1,15 @@
+{
+  "info": {
+    "exit_status": "CalledProcessError",
+    "submission": "Command '['docker', 'run', '-d', '--name', 'minisweagent-9272b994', '-w', '/testbed', '--rm', 'docker.io/swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4661:latest', 'sleep', '2h']' returned non-zero exit status 1.",
+    "model_stats": {
+      "instance_cost": 0.0,
+      "api_calls": 0
+    },
+    "mini_version": "1.11.1",
+    "traceback": "Traceback (most recent call last):\n  File \"/home/kmill34/cs427-agent-team405/src/minisweagent/run/extra/swebench.py\", line 211, in process_instance\n    env = get_sb_environment(config, instance)\n  File \"/home/kmill34/cs427-agent-team405/src/minisweagent/run/extra/swebench.py\", line 155, in get_sb_environment\n    env = get_environment(env_config)\n  File \"/home/kmill34/cs427-agent-team405/src/minisweagent/environments/__init__.py\", line 31, in get_environment\n    return get_environment_class(environment_class)(**config)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\n  File \"/home/kmill34/cs427-agent-team405/src/minisweagent/environments/docker.py\", line 44, in __init__\n    self._start_container()\n    ~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/home/kmill34/cs427-agent-team405/src/minisweagent/environments/docker.py\", line 66, in _start_container\n    result = subprocess.run(\n        cmd,\n    ...<3 lines>...\n        check=True,\n    )\n  File \"/home/kmill34/miniconda3/lib/python3.13/subprocess.py\", line 577, in run\n    raise CalledProcessError(retcode, process.args,\n                             output=stdout, stderr=stderr)\nsubprocess.CalledProcessError: Command '['docker', 'run', '-d', '--name', 'minisweagent-9272b994', '-w', '/testbed', '--rm', 'docker.io/swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4661:latest', 'sleep', '2h']' returned non-zero exit status 1.\n"
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "pylint-dev__pylint-4661"
+}

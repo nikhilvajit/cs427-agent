@@ -1,0 +1,41 @@
+diff --git a/django/core/mail/utils.py b/django/core/mail/utils.py
+index d18dfe4667..1babdf1c32 100644
+--- a/django/core/mail/utils.py
++++ b/django/core/mail/utils.py
+@@ -14,6 +14,10 @@ class CachedDnsName:
+     def get_fqdn(self):
+         if not hasattr(self, '_fqdn'):
+             self._fqdn = socket.getfqdn()
++        try:
++            self._fqdn.encode('ascii')
++        except UnicodeEncodeError:
++            self._fqdn = self._fqdn.encode('idna').decode('ascii')
+         return self._fqdn
+ 
+ 
+diff --git a/test_mail_fix.py b/test_mail_fix.py
+new file mode 100644
+index 0000000000..74f809dd97
+--- /dev/null
++++ b/test_mail_fix.py
+@@ -0,0 +1,20 @@
++import unittest
++from unittest.mock import patch
++from django.core.mail import EmailMessage
++from django.conf import settings
++
++# Minimal Django settings for the test
++settings.configure(DEFAULT_CHARSET='utf-8')
++
++class MailFixTest(unittest.TestCase):
++    def test_unicode_dns_punycode(self):
++        # Patch DNS_NAME in django.core.mail.message where it's used
++        with patch("django.core.mail.message.DNS_NAME", "xn--p8s937b"):
++            email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
++            email.encoding = 'iso-8859-1'
++            message = email.message()
++            print(f"Message-ID: {message['Message-ID']}")
++            self.assertIn('xn--p8s937b', message['Message-ID'])
++
++if __name__ == '__main__':
++    unittest.main()

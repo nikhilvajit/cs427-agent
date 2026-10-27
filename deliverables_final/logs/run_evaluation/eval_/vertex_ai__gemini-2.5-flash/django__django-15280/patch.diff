@@ -1,0 +1,13 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index fb6639793a..12c3c7aa0b 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -51,7 +51,7 @@ class ModelIterable(BaseIterable):
+         results = compiler.execute_sql(chunked_fetch=self.chunked_fetch, chunk_size=self.chunk_size)
+         select, klass_info, annotation_col_map = (compiler.select, compiler.klass_info,
+                                                   compiler.annotation_col_map)
+-        model_cls = klass_info['model']
++        model_cls = queryset.model
+         select_fields = klass_info['select_fields']
+         model_fields_start, model_fields_end = select_fields[0], select_fields[-1] + 1
+         init_list = [f[0].target.attname

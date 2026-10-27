@@ -1,0 +1,62 @@
+diff --git a/cbook_full.py b/cbook_full.py
+new file mode 100644
+index 0000000000..e69de29bb2
+diff --git a/lib/matplotlib/cbook.py b/lib/matplotlib/cbook.py
+index c9699b2e21..d8c2bcd426 100644
+--- a/lib/matplotlib/cbook.py
++++ b/lib/matplotlib/cbook.py
+@@ -799,6 +799,30 @@ class Grouper:
+             val = mapping.pop(key)
+             val.remove(key)
+ 
++    def __getstate__(self):
++        # Custom pickling to handle weakrefs.
++        # We store the actual objects, not the weakrefs.
++        return {
++            "_mapping": {
++                obj: [o() for o in group if o() is not None]
++                for wr, group in self._mapping.items()
++                if (obj := wr()) is not None
++            }
++        }
++
++    def __setstate__(self, state):
++        # Custom unpickling to reconstruct weakrefs.
++        # The state contains actual objects, so we convert them back to weakrefs.
++        self._mapping = {
++            weakref.ref(obj): [weakref.ref(o) for o in group]
++            for obj, group in state["_mapping"].items()
++        }
++
++        # After reconstructing, clean up any potential dead references
++        # that might have been part of the pickled state if objects
++        # were garbage collected between pickling and unpickling.
++        self.clean()
++
+     def join(self, a, *args):
+         """
+         Join given arguments into the same set.  Accepts one or more arguments.
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 0000000000..cca534472a
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,18 @@
++import matplotlib.pyplot as plt
++import pickle
++
++fig = plt.figure()
++ax1 = fig.add_subplot(211)
++ax2 = fig.add_subplot(212)
++time=[0,1,2,3,4]
++speed=[40000,4300,4500,4700,4800]
++acc=[10,11,12,13,14]
++ax1.plot(time,speed)
++ax1.set_ylabel('speed')
++ax2.plot(time,acc)
++ax2.set_ylabel('acc')
++
++fig.align_labels() ##pickling works after removing this line 
++
++pickle.dumps(fig)
++plt.show()

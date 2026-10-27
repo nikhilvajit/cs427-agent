@@ -1,0 +1,32 @@
+diff --git a/requests/models.py b/requests/models.py
+index 3f6a4f9..17e627a 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -327,6 +327,8 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+ 
+     def prepare_method(self, method):
+         """Prepares the given HTTP method."""
++        if isinstance(method, bytes):
++            method = method.decode('utf-8')
+         self.method = method
+         if self.method is not None:
+             self.method = self.method.upper()
+diff --git a/temp.patch b/temp.patch
+new file mode 100644
+index 0000000..384b825
+--- /dev/null
++++ b/temp.patch
+@@ -0,0 +1,13 @@
++--- a/requests/sessions.py
+++++ b/requests/sessions.py
++@@ -425,4 +425,6 @@
++             If Tuple, ('cert', 'key') pair.
++         """
++ 
++-        method = builtin_str(method)
+++        if isinstance(method, bytes):
+++            method = method.decode('utf-8')
+++        method = builtin_str(method)
++ 
++         prepared_request.prepare(method=method, url=url, headers=headers,
++                                  body=body, proxies=proxies, files=files,

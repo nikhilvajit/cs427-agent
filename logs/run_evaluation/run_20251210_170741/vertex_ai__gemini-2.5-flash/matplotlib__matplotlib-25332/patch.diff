@@ -1,0 +1,35 @@
+diff --git a/lib/matplotlib/cbook.py b/lib/matplotlib/cbook.py
+index c9699b2e21..1dad1f5b00 100644
+--- a/lib/matplotlib/cbook.py
++++ b/lib/matplotlib/cbook.py
+@@ -787,6 +787,30 @@ class Grouper:
+ 
+     def __init__(self, init=()):
+         self._mapping = {weakref.ref(x): [weakref.ref(x)] for x in init}
++    def __getstate__(self):
++        # When pickling, convert weakrefs to strong refs of existing objects.
++        # This will return a list of lists, where each inner list is a group
++        # of strong references.
++        self.clean()  # Clean up any dead references before pickling
++        state = []
++        unique_groups = {id(group): group for group in self._mapping.values()}
++        for group_weakrefs in unique_groups.values():
++            strong_refs = [ref() for ref in group_weakrefs if ref() is not None]
++            if strong_refs:
++                state.append(strong_refs)
++        return state
++
++    def __setstate__(self, state):
++        # When unpickling, reconstruct the _mapping from the strong refs.
++        self._mapping = {}
++        for group_strong_refs in state:
++            if not group_strong_refs:
++                continue
++            # Create weakrefs for all objects in the group
++            group_weakrefs = [weakref.ref(obj) for obj in group_strong_refs]
++            # Assign this list of weakrefs to each object's weakref key in _mapping
++            for obj_weakref in group_weakrefs:
++                self._mapping[obj_weakref] = group_weakrefs
+ 
+     def __contains__(self, item):
+         return weakref.ref(item) in self._mapping
